@@ -1,0 +1,6 @@
+// 创建属性
+i@twin = -1; // 成对
+i@trunk = -1; // 主干
+i@join_head = -1;
+i@join_tail = -1;
+i[]@branch = {}; // 分枝

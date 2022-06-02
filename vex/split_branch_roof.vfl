@@ -1,0 +1,111 @@
+vector src_minpos, src_maxpos, dst_minpos, dst_maxpos, p1, p2, q1, q2, dir, tan;
+int ptnum1, ptnum2, new_prim, join_head, join_tail, tri1, tri2;
+int pts[];
+float width;
+
+int prims[] = expandprimgroup(0, "ceiling"); // 获取ceiling 面组
+foreach (int main_prim; prims)  // 循环面组 获取第一个面
+{
+    pts = primpoints(0, main_prim); // 获取面组上所有点
+    getbbox(0, itoa(main_prim), src_minpos, src_maxpos); // 获取面上 最小和最大角
+    foreach(int primnum; prims) // 在次循环面组，获取第二个面
+    {
+        getbbox(0, itoa(primnum), dst_minpos, dst_maxpos); // 再次 获取面上 最小和最大角
+        if (abs(src_minpos.y - dst_minpos.y) > 0.01) continue; // 是否在一个平面上，如果不再的话就跳过后面
+        q1 = point(0,"P",pts[0]); // 设置点的坐标
+        q2 = point(0,"P",pts[1]);
+        // 判断是否 x 向相邻
+        if (abs(src_minpos.x - dst_maxpos.x) < 0.01 || abs(src_maxpos.x - dst_minpos.x) < 0.01) 
+        {
+            // 如果x向相邻 判断是否饱含 即 第一个面的z轴的区间在第二个面z轴之间
+            if (src_minpos.z+0.01 > dst_minpos.z && src_maxpos.z-0.01 < dst_maxpos.z) 
+            {
+                p1 = set(src_minpos.x, src_minpos.y, (src_minpos.z+src_maxpos.z)/2); // 设置 z 方相边的中间点
+                p2 = set(src_maxpos.x, src_maxpos.y, (src_minpos.z+src_maxpos.z)/2);
+                // 如果第一个面的最小x轴坐标 等于 第二个面最大值的x轴坐标 则为第一个值,否则为第二个值
+                dir = abs(src_minpos.x-dst_maxpos.x)<0.01 ? {-1,0,0} : {1,0,0}; // dir 用于之后向哪个方相挤出
+                // 添加2点 
+                ptnum1 = addpoint(0, p1);
+                ptnum2 = addpoint(0, p2);
+            } 
+            else continue; // 不包含就跳过下面
+        } 
+        // 判断是否 z 轴方向相邻
+        else if (abs(src_minpos.z - dst_maxpos.z) < 0.01 || abs(src_maxpos.z - dst_minpos.z) < 0.01) 
+        {
+            if (src_minpos.x+0.01 > dst_minpos.x && src_maxpos.x-0.01 < dst_maxpos.x) 
+            {
+                p1 = set((src_minpos.x+src_maxpos.x)/2, src_minpos.y, src_minpos.z);
+                p2 = set((src_minpos.x+src_maxpos.x)/2, src_maxpos.y, src_maxpos.z);
+                dir = abs(src_minpos.z-dst_maxpos.z)<0.01 ? {0,0,-1} : {0,0,1};
+                ptnum1 = addpoint(0, p1);
+                ptnum2 = addpoint(0, p2);
+                // 将x轴与z轴调换 换句话说就是把竖直的放倒
+                p1 = p1.zyx;
+                p2 = p2.zyx;
+                q1 = q1.zyx;
+                q2 = q2.zyx;
+            } 
+            else continue; 
+        } 
+        else continue;// 不包含就跳过下面
+                
+        int flag = abs(q1.x - q2.x) < 0.01; // 判断成立，则flag=1，说明线q1q2⊥p1p2 反之则q1q2 ∥p1p2 
+        // the last triangle vertex set to the new create pt for following extruding convenience
+        if (abs(p1.x - q1.x) < 0.01) // 判断p1.x 是最小x q1.x是随机点 相减等于零，p1q1说明在同一边
+        { 
+            setprimvertex(0, main_prim, flag, ptnum1); // 垂直时 flag为1，平行时为0
+            setprimvertex(0, main_prim, flag+1, ptnum2);
+            new_prim = addprim(0, "poly", pts[flag], pts[flag+1], ptnum2, ptnum1);// 创建面 填补点移动之后的空
+            tri1 = addprim(0, "poly", pts[flag-1], pts[flag], ptnum1); // 如果flag为o,pts[flag-1] 则从后往前取值
+            tri2 = addprim(0, "poly", pts[flag+1], pts[flag+2], ptnum2);
+        } else // 反之 不再同一边
+        {
+            setprimvertex(0, main_prim, flag, ptnum2); 
+            setprimvertex(0, main_prim, flag+1, ptnum1);
+            new_prim = addprim(0, "poly", pts[flag], pts[flag+1], ptnum1, ptnum2);
+            tri1 = addprim(0, "poly", pts[flag-1], pts[flag], ptnum2);
+            tri2 = addprim(0, "poly", pts[flag+1], pts[flag+2], ptnum1);
+        }
+        setpointattrib(0, "heading", ptnum1, dir, "set"); // 设置点属性为之前的dir值，dir代表点是否与主干相邻
+        setpointattrib(0, "heading", ptnum2, dir, "set"); 
+        
+        setprimgroup(0, "triangle", tri1, 1, "set"); // 设置面组，将三角形加入triangle
+        setprimattrib(0, "join_head", tri1, -1, "set"); // 赋予三角形 面属性 “头，尾” 值为 -1，-1代表初始值，之后在分，
+        setprimattrib(0, "join_tail", tri1, -1, "set");
+        setprimattrib(0, "trunk", tri1, primnum, "set"); // 三角形赋予 主干 属性 ，值为第二次循环里的面
+        setprimattrib(0, "twin", tri1, -1, "set"); // 三角形 成对属性，就是屋顶的两片
+        
+        setprimgroup(0, "triangle", tri2, 1, "set");
+        setprimattrib(0, "join_head", tri2, -1, "set");
+        setprimattrib(0, "join_tail", tri2, -1, "set");
+        setprimattrib(0, "trunk", tri2, primnum, "set");
+        setprimattrib(0, "twin", tri2, -1, "set");
+        
+        join_head = dir.x+dir.z > 0.01 ? ptnum2 : ptnum1; // 头部点，
+        join_tail = dir.x+dir.z > 0.01 ? ptnum1 : ptnum2; // 尾部点
+        // 利用flag 也就是垂直与否，求出两点的差，也就是向量的差
+        tan = point(0, "P", pts[flag-1]) - point(0, "P", pts[flag]); 
+        width = length(tan) / 2; // 向量的长度 也就是分只的总长度，这里取一半，
+        setprimattrib(0, "N", new_prim, {0,1,0}, "set"); // 设置法线的方向，
+        setprimgroup(0, "roof", new_prim, 1, "set"); // 加入roof组
+        setprimattrib(0, "twin", new_prim, main_prim, "set"); // 将新生成的面 赋予 成对 属性，属性值为当前面
+        setprimattrib(0, "trunk", new_prim, primnum, "set"); // 将新生成的面 赋予 分枝 属性，属性值 主干面
+        setprimattrib(0, "dir", new_prim, dir, "set"); // 将新生成的面 赋予 dir 属性，属性值 dir 即朝向
+        setprimattrib(0, "join_head", new_prim, join_head, "set"); // 将新生成的面 赋予 头部 属性，属性值 头部点坐标
+        setprimattrib(0, "join_tail", new_prim, -1, "set"); // 尾部属性为-1
+        setprimattrib(0, "width", new_prim, width, "set"); // 新生成面的宽度
+        
+        setprimgroup(0, "ceiling", main_prim, 0, "set"); // main_prim 就是新生成面的另一半，成对面
+        setprimgroup(0, "roof", main_prim, 1, "set");
+        setprimattrib(0, "twin", main_prim, new_prim, "set");
+        setprimattrib(0, "trunk", main_prim, primnum, "set");
+        setprimattrib(0, "dir", main_prim, dir, "set");
+        setprimattrib(0, "join_tail", main_prim, join_tail, "set");
+        setprimattrib(0, "width", main_prim, width, "set");
+        
+        setprimattrib(0, "branch", primnum, main_prim, "append"); // 为主干面添加分枝属性，
+        setprimattrib(0, "branch", primnum, new_prim, "append");
+        break;
+    }
+}

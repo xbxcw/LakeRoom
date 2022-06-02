@@ -1,0 +1,83 @@
+vector src_minpos, src_maxpos, p1, p2, q1, q2, dir, tmp_dir, tan;
+int ptnum1, ptnum2, new_prim, join_head, join_tail, tri1, tri2;
+int pts[], near_prims[];
+float width;
+
+int prims[] = expandprimgroup(0, "ceiling");
+foreach (int main_prim; prims) {
+    pts = primpoints(0, main_prim);
+    getbbox(0, itoa(main_prim), src_minpos, src_maxpos);
+    near_prims = prim(0, "branch", main_prim);
+    dir = {0,0,0};
+    q1 = point(0,"P",pts[0]);
+    q2 = point(0,"P",pts[1]);
+    foreach(int near_prim; near_prims) {
+        dir += abs(prim(0, "dir", near_prim));
+    }
+    if (dir.z > dir.x || (abs(dir.z-dir.x)<0.01 && src_maxpos.x-src_minpos.x>src_maxpos.z-src_minpos.z-0.01)) {
+        // more branch's dirs in z direction, or self width in x axis is longer
+        p1 = set(src_minpos.x, src_minpos.y, (src_minpos.z+src_maxpos.z)/2);
+        p2 = set(src_maxpos.x, src_maxpos.y, (src_minpos.z+src_maxpos.z)/2);
+        ptnum1 = addpoint(0, p1);
+        ptnum2 = addpoint(0, p2);
+        tmp_dir = {1, 0, 0};
+    } else { // more branch's dirs in x direction, or self width in z axis is longer
+        p1 = set((src_minpos.x+src_maxpos.x)/2, src_minpos.y, src_minpos.z);
+        p2 = set((src_minpos.x+src_maxpos.x)/2, src_maxpos.y, src_maxpos.z);
+        ptnum1 = addpoint(0, p1);
+        ptnum2 = addpoint(0, p2);
+        tmp_dir = {0, 0, 1};
+        p1 = p1.zyx;
+        p2 = p2.zyx;
+        q1 = q1.zyx;
+        q2 = q2.zyx;
+    }
+    int flag = abs(q1.x - q2.x) < 0.01; //vertical to p2-p1
+    if (abs(p1.x - q1.x) < 0.01) { //right or front side
+        setprimvertex(0, main_prim, flag, ptnum1);
+        setprimvertex(0, main_prim, flag+1, ptnum2);
+        new_prim = addprim(0, "poly", pts[flag], pts[flag+1], ptnum2, ptnum1);
+        tri1 = addprim(0, "poly", pts[flag-1], pts[flag], ptnum1);
+        tri2 = addprim(0, "poly", pts[flag+1], pts[flag+2], ptnum2);
+
+    } else { //left or back side
+        setprimvertex(0, main_prim, flag, ptnum2);
+        setprimvertex(0, main_prim, flag+1, ptnum1);
+        new_prim = addprim(0, "poly", pts[flag], pts[flag+1], ptnum1, ptnum2);
+        tri1 = addprim(0, "poly", pts[flag-1], pts[flag], ptnum2);
+        tri2 = addprim(0, "poly", pts[flag+1], pts[flag+2], ptnum1);
+    }
+    setprimgroup(0, "triangle", tri1, 1, "set");
+    setprimattrib(0, "join_head", tri1, -1, "set");
+    setprimattrib(0, "join_tail", tri1, -1, "set");
+    setprimattrib(0, "trunk", tri1, -1, "set");
+    setprimattrib(0, "twin", tri1, -1, "set");
+    
+    setprimgroup(0, "triangle", tri2, 1, "set");
+    setprimattrib(0, "join_head", tri2, -1, "set");
+    setprimattrib(0, "join_tail", tri2, -1, "set");
+    setprimattrib(0, "trunk", tri2, -1, "set");
+    setprimattrib(0, "twin", tri2, -1, "set");
+    
+    join_head = ptnum2;
+    join_tail = ptnum1;
+    tan = point(0, "P", pts[flag-1]) - point(0, "P", pts[flag]);
+    width = length(tan) / 2;
+    
+    setprimattrib(0, "N", new_prim, {0,1,0}, "set");
+    setprimgroup(0, "roof", new_prim, 1, "set");
+    setprimattrib(0, "twin", new_prim, main_prim, "set");
+    setprimattrib(0, "branch", new_prim, near_prims, "set");
+    setprimattrib(0, "trunk", new_prim, -1, "set");
+    setprimattrib(0, "dir", new_prim, tmp_dir, "set");
+    setprimattrib(0, "join_head", new_prim, join_head, "set");
+    setprimattrib(0, "join_tail", new_prim, -1, "set");
+    setprimattrib(0, "width", new_prim, width, "set");
+    
+    setprimgroup(0, "ceiling", main_prim, 0, "set");
+    setprimgroup(0, "roof", main_prim, 1, "set");
+    setprimattrib(0, "twin", main_prim, new_prim, "set");
+    setprimattrib(0, "dir", main_prim, tmp_dir, "set");
+    setprimattrib(0, "join_tail", main_prim, join_tail, "set");
+    setprimattrib(0, "width", main_prim, width, "set");
+}
